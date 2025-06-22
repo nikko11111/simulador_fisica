@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Simulador de Movimiento Rectilíneo</title>
+    <style>
+        canvas {
+            border: 1px solid black;
+            background-color: #87CEEB;
+            /* Cielo */
+        }
+
+        .controls {
+            margin: 20px;
+            font-family: Arial, sans-serif;
+        }
+
+        .control-group {
+            margin: 10px 0;
+        }
+
+        button {
+            padding: 5px 15px;
+            margin: 5px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="controls">
+        <div class="control-group">
+            <label>Velocidad Inicial (m/s): </label>
+            <input type="number" id="initialVelocity" value="10" step="0.1">
+        </div>
+        <div class="control-group">
+            <label>Distancia Objetivo (m): </label>
+            <input type="number" id="distance" value="100" step="1" min="1" onchange="updateScale()">
+        </div>
+        <div class="control-group">
+            <label>Aceleración (m/s²): <span id="accelValue">0</span></label><br>
+            <input type="range" id="acceleration" min="-5" max="5" value="0" step="0.1" oninput="updateAcceleration()">
+        </div>
+        <button onclick="startSimulation()">Iniciar Simulación</button>
+        <button onclick="pauseSimulation()">Pausar</button>
+        <button onclick="resetSimulation()">Reiniciar</button>
+    </div>
+
+    <canvas id="simulationCanvas" width="800" height="200"></canvas>
+
+    <div class="controls">
+        <p>Tiempo: <span id="time">0</span> s</p>
+        <p>Velocidad Actual: <span id="currentVelocity">0</span> m/s</p>
+        <p>Posición: <span id="position">0</span> m</p>
+    </div>
+
+    <canvas id="velocityGraph" width="800" height="150"></canvas>
+    <canvas id="accelerationGraph" width="800" height="150"></canvas>
+
+
+    <script>
+        const canvas = document.getElementById('simulationCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let position = 0;
+        let velocity = 0;
+        let acceleration = 0;
+        let time = 0;
+        let animationFrameId;
+        let scale;
+        let isPaused = false;
+        let lastTimestamp = 0;
+        const carWidth = 80;
+        const carHeight = 40;
+
+        function updateScale() {
+            const targetDistance = parseFloat(document.getElementById('distance').value) || 1;
+            scale = (canvas.width - carWidth - 20) / targetDistance;
+            drawScene();
+        }
+
+        function updateAcceleration() {
+            acceleration = parseFloat(document.getElementById('acceleration').value);
+            document.getElementById('accelValue').textContent = acceleration.toFixed(1);
+        }
+
+        function drawCar(x, y) {
+            // Cuerpo del auto
+            ctx.fillStyle = 'red';
+            ctx.fillRect(x, y, carWidth, carHeight);
+
+            // Techo del auto
+            ctx.fillStyle = 'black';
+            ctx.fillRect(x + 20, y - 15, 40, 15);
+
+            // Ruedas
+            ctx.fillStyle = 'black';
+            ctx.beginPath();
+            ctx.arc(x + 15, y + carHeight, 10, 0, Math.PI * 2);
+            ctx.arc(x + carWidth - 15, y + carHeight, 10, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        function drawScene() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Dibujar carretera
+            ctx.fillStyle = '#505050';
+            ctx.fillRect(0, canvas.height / 2 - 20, canvas.width, 40);
+
+            // Dibujar líneas de la carretera
+            ctx.strokeStyle = 'white';
+            ctx.setLineDash([20, 15]);
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(0, canvas.height / 2);
+            ctx.lineTo(canvas.width, canvas.height / 2);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            const carX = Math.max(0, Math.min(position * scale, canvas.width - carWidth));
+            drawCar(carX, canvas.height / 2 - carHeight - 10);
+        }
+
+        function updatePhysics(deltaTime) {
+            const targetDistance = parseFloat(document.getElementById('distance').value);
+            velocity += acceleration * deltaTime;
+            position += velocity * deltaTime + 0.5 * acceleration * deltaTime * deltaTime;
+            if (position >= targetDistance && acceleration >= 0) {
+                position = targetDistance;
+                velocity = 0;
+                isPaused = true;
+            } else if (position <= 0 && velocity < 0) {
+                position = 0;
+                velocity = 0;
+                isPaused = true;
+            }
+        }
+
+        function updateDisplay() {
+            document.getElementById('time').textContent = time.toFixed(2);
+            document.getElementById('currentVelocity').textContent = velocity.toFixed(2);
+            document.getElementById('position').textContent = position.toFixed(2);
+        }
+
+        function animate(timestamp) {
+            const deltaTime = (timestamp - lastTimestamp) / 1000;
+            if (!isPaused) {
+                time += deltaTime;
+                updatePhysics(deltaTime);
+                drawScene();
+                velocityData.push({ t: time, v: velocity });
+                accelerationData.push({ t: time, v: acceleration });
+
+            }
+            updateDisplay();
+            lastTimestamp = timestamp;
+            if (!isPaused || animationFrameId === undefined) {
+                animationFrameId = requestAnimationFrame(animate);
+            }
+
+            updateGraphs();
+
+
+        }
+
+        function startSimulation() {
+            velocityData = [];
+            accelerationData = [];
+            updateGraphs();
+
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+            }
+            resetSimulation();
+            velocity = parseFloat(document.getElementById('initialVelocity').value);
+            updateAcceleration();
+            isPaused = false;
+            lastTimestamp = performance.now();
+            animationFrameId = requestAnimationFrame(animate);
+        }
+
+        function pauseSimulation() {
+            isPaused = !isPaused;
+            if (!isPaused) {
+                lastTimestamp = performance.now();
+                animationFrameId = requestAnimationFrame(animate);
+            }
+        }
+
+        function resetSimulation() {
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+            }
+            position = 0;
+            velocity = parseFloat(document.getElementById('initialVelocity').value);
+            time = 0;
+            isPaused = false;
+            updateScale();
+            drawScene();
+            updateDisplay();
+        }
+
+        updateScale();
+        updateAcceleration();
+        resetSimulation();
+
+        const velocityCtx = document.getElementById('velocityGraph').getContext('2d');
+        const accelerationCtx = document.getElementById('accelerationGraph').getContext('2d');
+
+        let velocityData = [];
+        let accelerationData = [];
+
+        const graphWidth = 800;
+        const graphHeight = 150;
+        const graphPadding = 40;
+        const graphDuration = 10; // segundos en eje X
+
+
+        function drawGraph(ctx, data, color, label, unit) {
+            ctx.clearRect(0, 0, graphWidth, graphHeight);
+
+            if (data.length < 2) return;
+
+            const minTime = 0;
+            const maxTime = data[data.length - 1].t;
+            const timeRange = maxTime - minTime || 1;
+
+            const values = data.map(p => p.v);
+            const maxY = Math.max(...values, 1);
+            const minY = Math.min(...values, 0);
+            const rangeY = maxY - minY || 1;
+
+            // Dibujar eje Y
+            ctx.beginPath();
+            ctx.moveTo(graphPadding, 0);
+            ctx.lineTo(graphPadding, graphHeight);
+            ctx.strokeStyle = "#000";
+            ctx.stroke();
+
+            // Dibujar eje X cruzando por y = 0 (si está dentro del rango)
+            if (minY <= 0 && maxY >= 0) {
+                const zeroY = ((maxY - 0) / rangeY) * graphHeight;
+                ctx.beginPath();
+                ctx.moveTo(graphPadding, zeroY);
+                ctx.lineTo(graphWidth, zeroY);
+                ctx.strokeStyle = "#888";
+                ctx.stroke();
+            }
+
+            // Ticks del eje Y
+            const yTicks = 4;
+            ctx.fillStyle = "#000";
+            ctx.font = "10px Arial";
+            for (let i = 0; i <= yTicks; i++) {
+                const yVal = minY + (rangeY * (yTicks - i)) / yTicks;
+                const y = (graphHeight * i) / yTicks;
+                ctx.fillText(yVal.toFixed(1), 5, y + 4);
+            }
+
+            // Ticks del eje X (tiempo)
+            const xTicks = 5;
+            for (let i = 0; i <= xTicks; i++) {
+                const tVal = minTime + (timeRange * i) / xTicks;
+                const x = graphPadding + ((graphWidth - graphPadding) * i) / xTicks;
+                ctx.fillText(tVal.toFixed(1), x - 10, graphHeight - 5);
+            }
+
+            // Etiqueta del gráfico
+            ctx.fillText(`${label} (${unit})`, 10, 10);
+
+            // Dibujar la línea de datos
+            ctx.beginPath();
+            ctx.strokeStyle = color;
+
+            data.forEach((point, index) => {
+                const x = graphPadding + ((point.t - minTime) / timeRange) * (graphWidth - graphPadding);
+                const y = ((maxY - point.v) / rangeY) * graphHeight;
+                if (index === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            });
+
+            ctx.stroke();
+        }
+
+
+        function updateGraphs() {
+            drawGraph(velocityCtx, velocityData, 'blue', 'Velocidad', 'm/s');
+            drawGraph(accelerationCtx, accelerationData, 'green', 'Aceleración', 'm/s²');
+        }
+
+
+    </script>
+</body>
+
+</html>
